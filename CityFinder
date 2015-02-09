@@ -1,0 +1,75 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Diagnostics.Contracts;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    internal class CityFinder : FinderBase<CityWithoutKml>
+    {
+        private readonly INearbyCityLocator locator;
+
+        internal CityFinder(int count, INearbyCityLocator locator, IMatchRepository repository)
+            : base(count, repository)
+        {
+            Contract.Requires(count > 0);
+            Contract.Requires(locator != null);
+            Contract.Requires(locator.Strategy != null);
+            Contract.Requires(repository != null);
+
+            this.locator = locator;
+        }
+
+        internal override MatchType GeographyType
+        {
+            get { return MatchType.City; }
+        }
+
+        internal override long GetId(CityWithoutKml entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException("entity");
+            }
+
+            return entity.CityId;
+        }
+
+        internal override async Task<IEnumerable<CityWithoutKml>> FindNearbyAsync(
+            GeographicCoordinate center, 
+            int maxCount)
+        {
+            return await this.locator.LocateAsync(center, maxCount).Prepare();
+        }
+
+        protected override Task<IEnumerable<MultifamilyTypeAheadItem>> GenerateMultifamilyTypeAheadItemsAsync(IEnumerable<CityWithoutKml> queryResults)
+        {
+            return Task.FromResult(queryResults.Select(Convert));
+        }
+
+        private static MultifamilyTypeAheadItem Convert(CityWithoutKml entity)
+        {
+            var result = new MultifamilyTypeAheadItem
+            {
+                BoundingBox = entity.Bounds,
+                CountryCode = entity.CountryCode,
+                DisplayText = entity.CityName,
+                Location = entity.Bounds.GetCenterPoint(),
+                MatchId = entity.CityId,
+                MatchType = MatchType.City
+            };
+            result.Elements.Add(LookupHelper.CityElementName, entity.CityName);
+            result.Elements.Add(LookupHelper.StateCodeElementName, entity.Subdivision);
+            return result;
+        }
+
+#if CONTRACTS_FULL
+        [ContractInvariantMethod]
+        private void EnsureInvariants()
+        {
+            Contract.Invariant(this.locator != null);
+        }
+#endif
+    }
+}
