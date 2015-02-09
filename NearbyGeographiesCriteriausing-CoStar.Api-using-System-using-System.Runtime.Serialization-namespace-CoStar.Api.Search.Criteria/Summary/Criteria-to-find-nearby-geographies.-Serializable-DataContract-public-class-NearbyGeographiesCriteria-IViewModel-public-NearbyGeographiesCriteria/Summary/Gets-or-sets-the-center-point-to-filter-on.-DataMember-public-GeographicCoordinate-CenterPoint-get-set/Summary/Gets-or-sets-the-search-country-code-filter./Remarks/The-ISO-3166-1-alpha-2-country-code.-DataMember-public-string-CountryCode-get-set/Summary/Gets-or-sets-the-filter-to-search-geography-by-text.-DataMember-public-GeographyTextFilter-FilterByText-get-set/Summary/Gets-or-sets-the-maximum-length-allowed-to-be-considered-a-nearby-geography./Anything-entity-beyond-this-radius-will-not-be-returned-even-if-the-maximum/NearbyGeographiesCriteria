@@ -1,0 +1,39 @@
+namespace Github.NearbyFinder
+{
+  using System;
+  using System.Runtime.Serialization;
+
+    // Summary:
+    //     Criteria to find nearby geographies.
+    [Serializable]
+    [DataContract]
+    public class NearbyGeographiesCriteria : IViewModel
+    {
+        public NearbyGeographiesCriteria();
+
+        // Summary:
+        //     Gets or sets the center point to filter on.
+        [DataMember]
+        public GeographicCoordinate CenterPoint { get; set; }
+        //
+        // Summary:
+        //     Gets or sets the search country code filter.
+        //
+        // Remarks:
+        //     The ISO 3166-1 alpha-2 country code.
+        [DataMember]
+        public string CountryCode { get; set; }
+        //
+        // Summary:
+        //     Gets or sets the filter to search geography by text.
+        [DataMember]
+        public GeographyTextFilter FilterByText { get; set; }
+        //
+        // Summary:
+        //     Gets or sets the maximum length allowed to be considered a nearby geography.
+        //      Anything entity beyond this radius will not be returned, even if the maximum
+        //     count is not reached.  A default value will be used if this isn't specified.
+        [DataMember]
+        public Measurement Radius { get; set; }
+    }
+}
