@@ -1,0 +1,95 @@
+namespace Github.NearbyFinder
+{
+    using System.Collections.Generic;
+    using System.Collections.ObjectModel;
+    using System.ComponentModel.Composition;
+    using System.Diagnostics.Contracts;
+    using System.Threading;
+    using System.Threading.Tasks;
+
+    [Export(typeof(IUseCaseContainer))]
+    internal class NearbyGeographySearch : INearbyGeographySearch
+    {
+        private static IConfiguration configuration;
+        private static Collection<INearbyGeographyFinder> geographyFinders;
+
+        public IAdapterStrategy Strategy { get; set; }
+
+        private IConfiguration Configuration
+        {
+            get
+            {
+                Contract.Requires(this.Strategy != null);
+                Contract.Ensures(this.Strategy != null);
+                Contract.Ensures(Contract.Result<IConfiguration>() != null);
+
+                var instance = LazyInitializer.EnsureInitialized(
+                    ref configuration, 
+                    () => new Configuration(this.Strategy.AppSettings));
+
+                Contract.Assume(instance != null);
+                return instance;
+            }
+        }
+
+        private IEnumerable<INearbyGeographyFinder> GeographyFinders
+        {
+            get
+            {
+                return LazyInitializer.EnsureInitialized(
+                                    ref geographyFinders,
+                                    () => new Collection<INearbyGeographyFinder>
+                                    {
+                                        new NearbyMultifamilyCityPostalSubmarketFinder(this), 
+                                        new TopGeographiesInSubdivisionFinder(this)
+                                    });
+            }
+        }
+
+        public async Task<ViewModel<GeographyMatchResultContainer>> SearchAsync(NearbyGeographiesCriteria criteria)
+        {
+            // find nearby geographies
+            if (criteria == null ||
+                (criteria.FilterByText.AreClassPropertiesAllNull() && criteria.CenterPoint == null))
+            {
+                return new ViewModel<GeographyMatchResultContainer>(StatusCode.InvalidInput);
+            }
+
+            var centerPoint = criteria.CenterPoint;
+
+            if (centerPoint != null)
+            {
+                if (GeographicCoordinate.Load(centerPoint.Latitude, centerPoint.Longitude) == null)
+                {
+                    return new ViewModel<GeographyMatchResultContainer>(StatusCode.InvalidInput);
+                }
+            }
+
+            try
+            {
+                var returnContainer = await this.FindGeographiesAsync(criteria).Prepare();
+                return new ViewModel<GeographyMatchResultContainer>(StatusCode.Success, returnContainer);
+            }
+            catch (InvalidCriteriaException)
+            {
+                return new ViewModel<GeographyMatchResultContainer>(StatusCode.InvalidInput);
+            }
+        }
+
+        private async Task<GeographyMatchResultContainer> FindGeographiesAsync(NearbyGeographiesCriteria criteria)
+        {
+            Contract.Requires(criteria != null);
+
+            foreach (var finder in this.GeographyFinders)
+            {
+                Contract.Assert(finder != null);
+                if (finder.IsCriteriaApplicable(criteria))
+                {
+                    return await finder.FindGeographiesAsync(this.Configuration, criteria).Prepare();
+                }
+            }
+
+            return new GeographyMatchResultContainer();
+        }
+    }
+}
