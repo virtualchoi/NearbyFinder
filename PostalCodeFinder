@@ -6,7 +6,6 @@ namespace Github.NearbyFinder
     using System.Linq;
     using System.Threading.Tasks;
 
-    [ContractVerification(true)]
     internal class PostalCodeFinder : FinderBase<PostalCodeRegion>
     {
         private readonly INearbyPostalCodeLocator locator;
