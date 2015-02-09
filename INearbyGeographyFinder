@@ -1,0 +1,26 @@
+namespace Github.NearbyFinder
+{
+    using System.Diagnostics.Contracts;
+    using System.Threading.Tasks;
+    using CoStar.Api.Search.Criteria;
+    using CoStar.Api.Search.Result;
+
+    [ContractClass(typeof(ContractForINearbyGeographyFinder))]
+    internal interface INearbyGeographyFinder
+    {
+        /// <summary>
+        /// Determine if the criteria is appropriate for the INearbyGeographyFinder.
+        /// </summary>
+        /// <param name="criteria">Nearby geographies criteria.</param>
+        /// <returns>True if the criteria is applicable, false if not.</returns>
+        bool IsCriteriaApplicable(NearbyGeographiesCriteria criteria);
+
+        /// <summary>
+        /// Find geographies based on the criteria.
+        /// </summary>
+        /// <param name="configuration">The configured values.</param>
+        /// <param name="criteria">Nearby geographies criteria.</param>
+        /// <returns>Structure containing the top geographies and the geography that matches criteria, if applicable.</returns>
+        Task<GeographyMatchResultContainer> FindGeographiesAsync(IConfiguration configuration, NearbyGeographiesCriteria criteria);
+    }
+}
