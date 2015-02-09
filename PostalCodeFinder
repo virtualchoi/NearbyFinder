@@ -1,0 +1,81 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Diagnostics.Contracts;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    [ContractVerification(true)]
+    internal class PostalCodeFinder : FinderBase<PostalCodeRegion>
+    {
+        private readonly INearbyPostalCodeLocator locator;
+
+        internal PostalCodeFinder(
+            int count,
+            INearbyPostalCodeLocator locator,
+            IMatchRepository repository)
+            : base(count, repository)
+        {
+            Contract.Requires(count > 0);
+            Contract.Requires(locator != null);
+            Contract.Requires(locator.Strategy != null);
+            Contract.Requires(repository != null);
+
+            this.locator = locator;
+        }
+
+        internal override MatchType GeographyType
+        {
+            get { return MatchType.PostalCode; }
+        }
+
+        internal override async Task<IEnumerable<PostalCodeRegion>> FindNearbyAsync(
+            GeographicCoordinate center,
+            int maxCount)
+        {
+            return await this.locator.LocateAsync(center, maxCount).Prepare();
+        }
+
+        internal override long GetId(PostalCodeRegion entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException("entity");
+            }
+
+            return entity.PostalCodeRegionId;
+        }
+
+        protected override Task<IEnumerable<MultifamilyTypeAheadItem>> GenerateMultifamilyTypeAheadItemsAsync(IEnumerable<PostalCodeRegion> queryResults)
+        {
+            return Task.FromResult(queryResults.Select(Convert));
+        }
+
+        private static MultifamilyTypeAheadItem Convert(PostalCodeRegion entity)
+        {
+            var result = new MultifamilyTypeAheadItem
+                            {
+                                BoundingBox = entity.Bounds,
+                                CountryCode = entity.Street.CountryCode,
+                                DisplayText = entity.Street.PostalCode,
+                                Location = entity.Bounds.GetCenterPoint(),
+                                MatchId = entity.PostalCodeRegionId,
+                                MatchType = MatchType.PostalCode
+                            };
+            result.Elements.Add(LookupHelper.CityElementName, entity.Street.CityName);
+            result.Elements.Add(LookupHelper.PostalCodeElementName, entity.Street.PostalCode);
+            result.Elements.Add(LookupHelper.StateCodeElementName, entity.Street.SubdivisionCode);
+            return result;
+        }
+
+#if CONTRACTS_FULL
+        [ContractInvariantMethod]
+        [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+        private void EnsureInvariants()
+        {
+            Contract.Invariant(this.locator != null);
+        }
+#endif
+    }
+}
