@@ -1,0 +1,45 @@
+namespace Github.NearbyFinder
+{
+    using System.Diagnostics.CodeAnalysis;
+    using System.Diagnostics.Contracts;
+
+    internal class Configuration : IConfiguration
+    {
+        private readonly int returnCount;
+
+        private readonly Length distanceLimit;
+
+        internal Configuration(ITypedConfiguration appSettings)
+        {
+            Contract.Requires(appSettings != null);
+
+            var value = appSettings.GetInt32("NearbyMultifamilyGeographiesMaxCount");
+            Contract.Assume(value > 0);
+            this.returnCount = value;
+
+            var distance = appSettings.GetInt32("NearbyMultifamilyGeographiesDefaultMaxDistanceMeters");
+            Contract.Assume(distance > 0);
+            this.distanceLimit = new Meter(distance);
+        }
+
+        public int ReturnCount
+        {
+            get { return this.returnCount; }
+        }
+
+        public Length DistanceLimit
+        {
+            get { return this.distanceLimit; }
+        }
+
+#if CONTRACTS_FULL
+        [ContractInvariantMethod]
+        [ExcludeFromCodeCoverage]
+        private void EnsureInvariants()
+        {
+            Contract.Invariant(this.returnCount > 0);
+            Contract.Invariant(this.distanceLimit != null);
+        }
+#endif
+    }
+}
