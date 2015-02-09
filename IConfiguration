@@ -1,0 +1,11 @@
+namespace Github.NearbyFinder
+{
+    using System.Diagnostics.Contracts;
+
+    internal interface IConfiguration
+    {
+        int ReturnCount { get; }
+
+        Length DistanceLimit { get; }
+    }
+}
