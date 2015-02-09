@@ -1,0 +1,151 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Concurrent;
+    using System.Collections.Generic;
+    using System.Diagnostics.CodeAnalysis;
+    using System.Diagnostics.Contracts;
+    using System.Globalization;
+    using System.Linq;
+    using System.Threading.Tasks;
+    using Microsoft.Practices.EnterpriseLibrary.Common.Utility;
+
+    /// <summary>
+    ///  Find top cities, submarkets, and postal codes in a subdivision.
+    /// </summary>
+    internal class TopGeographiesInSubdivisionFinder : INearbyGeographyFinder
+    {
+        private static readonly ConcurrentDictionary<int, TopGeographyResultsCache> CachedResults = new ConcurrentDictionary<int, TopGeographyResultsCache>();
+
+        private readonly IMatchRepository repository;
+        private readonly IMultifamilyTypeAheadLogic typeAheadLogic;
+
+        public TopGeographiesInSubdivisionFinder(IUseCaseContainer useCaseContainer)
+        {
+            this.repository = useCaseContainer.ResolveUseCaseContainer<IMatchRepository>();
+            this.typeAheadLogic = useCaseContainer.ResolveUseCaseContainer<IMultifamilyTypeAheadLogic>();            
+        }
+
+        public bool IsCriteriaApplicable(NearbyGeographiesCriteria criteria)
+        {
+            return (criteria != null)
+                && (criteria.CenterPoint == null) 
+                && (criteria.FilterByText != null) 
+                && !string.IsNullOrWhiteSpace(criteria.FilterByText.SubdivisionCode)
+                && string.IsNullOrWhiteSpace(criteria.FilterByText.Submarket)
+                && string.IsNullOrWhiteSpace(criteria.FilterByText.City) 
+                && string.IsNullOrWhiteSpace(criteria.FilterByText.PostalCode);
+        }
+
+        public async Task<GeographyMatchResultContainer> FindGeographiesAsync(
+            IConfiguration configuration,
+            NearbyGeographiesCriteria criteria)
+        {
+            if (criteria == null)
+            {
+                throw new ArgumentNullException("criteria");
+            }
+
+            var subdivisionMatch = await this.GetSubdivisionMatchAsync(criteria).Prepare();
+
+            var container = new GeographyMatchResultContainer
+                                {
+                                    GeographyMatchFromFilterText = subdivisionMatch.ToGeographyMatchResult()
+                                };
+
+            if ((subdivisionMatch == null) || !subdivisionMatch.MatchId.HasValue)
+            {
+                return container;
+            }
+
+            container.GeographyMatchFromFilterText = subdivisionMatch.ToGeographyMatchResult();
+
+            var topGeographies = GetTopResultsAndCacheResultIfNecessary(subdivisionMatch, configuration);
+
+            if (topGeographies != null)
+            {
+                foreach (var topGeographyMatches in topGeographies.Select(async pair => await this.ProcessTopGeographiesAsync(pair).Prepare()).Select(t => t.Result))
+                {
+                    topGeographyMatches.ForEach(match => container.Items.Add(match));
+                }
+            }
+
+            return container;
+        }
+
+        private static IDictionary<GeographyType, ICollection<int>> GetTopResultsAndCacheResultIfNecessary(
+            MultifamilyTypeAheadItem subdivisionMatch, 
+            IConfiguration configuration)
+        {
+            Contract.Requires(subdivisionMatch != null);
+            Contract.Requires(subdivisionMatch.MatchId.HasValue);
+            Contract.Requires(configuration != null);
+
+            var matchIdIntValue = Convert.ToInt32(subdivisionMatch.MatchId, CultureInfo.InvariantCulture);
+            var cachedResult = CachedResults.ContainsKey(matchIdIntValue) ? CachedResults[matchIdIntValue] : null;
+
+            if (cachedResult != null)
+            {
+                if (!cachedResult.IsCacheExpired())
+                {
+                    return cachedResult.Results;
+                }
+            }
+
+            var topResults = GeographyRepository.SubdivisionOperations.GetMultifamilyTopGeographies(matchIdIntValue, configuration.ReturnCount);
+            CachedResults.AddOrUpdate(
+                matchIdIntValue, 
+                new TopGeographyResultsCache(topResults), 
+                (key, oldValue) => new TopGeographyResultsCache(topResults));
+
+            return topResults;
+        }
+
+        private async Task<ICollection<GeographyMatchResult>> ProcessTopGeographiesAsync(KeyValuePair<GeographyType, ICollection<int>> topResult)
+        {
+            Contract.Ensures(Contract.Result<Task<ICollection<GeographyMatchResult>>>() != null);
+
+            if (topResult.Value.IsNullOrEmpty())
+            {
+                return new GeographyMatchResult[0];
+            }
+
+            var matches = await this.repository.FindAsync(
+                (MatchType)((int)topResult.Key), 
+                topResult.Value.Select(Convert.ToInt64)).Prepare();
+
+            if (matches == null || matches.Value == null || matches.Value.Items == null)
+            {
+                return new GeographyMatchResult[0];                
+            }
+
+            return matches.Value.Items.Select(item => item.ToGeographyMatchResult()).ToArray();
+        }
+
+        private async Task<MultifamilyTypeAheadItem> GetSubdivisionMatchAsync(NearbyGeographiesCriteria criteria)
+        {
+            return await UnauthenticatedProcessorStrategy.FindBestMatchAsync(
+                criteria.FilterByText, 
+                criteria.CenterPoint,
+                this.typeAheadLogic).Prepare();
+        }
+
+        private class TopGeographyResultsCache
+        {
+            public TopGeographyResultsCache(IDictionary<GeographyType, ICollection<int>> newResults)
+            {
+                this.Results = newResults;
+                this.UpdateDateTime = DateTime.Now;
+            }
+
+            public IDictionary<GeographyType, ICollection<int>> Results { get; set; }
+
+            public DateTime UpdateDateTime { get; set; }
+
+            public bool IsCacheExpired()
+            {
+                return this.UpdateDateTime.AddDays(1.0) < DateTime.Now;
+            }
+        }
+    }
+}
