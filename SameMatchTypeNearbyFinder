@@ -1,0 +1,27 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    internal class SameMatchTypeNearbyFinder<T> : INearbyQuery<T> where T : GeographyViewModel
+    {
+        private readonly FinderBase<T> finder;
+        private readonly MultifamilyTypeAheadItem bestMatch;
+
+        public SameMatchTypeNearbyFinder(
+                        FinderBase<T> finder,
+                        MultifamilyTypeAheadItem bestMatch)
+        {
+            this.finder = finder;
+            this.bestMatch = bestMatch;
+        }
+
+        public async Task<IEnumerable<T>> FindNearbyAsync(GeographicCoordinate center, int maxCount)
+        {
+            var findResults = await this.finder.FindNearbyAsync(center, maxCount + 1).Prepare();
+            return findResults.Where(result => this.finder.GetId(result) != this.bestMatch.MatchId);
+        }
+    }
+}
