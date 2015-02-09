@@ -1,0 +1,148 @@
+namespace Github.NearbyFinder
+{
+    using System.Diagnostics.Contracts;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    internal class NearbyMultifamilyCityPostalSubmarketFinder : INearbyGeographyFinder
+    {
+        private readonly IMatchRepository repository;
+        private readonly INearbyCityLocator cityLocator;
+        private readonly INearbyPostalCodeLocator postalCodeLocator;
+        private readonly INearbySubmarketLocator submarketLocator;
+        private readonly IMultifamilyTypeAheadLogic typeAheadLogic;
+
+        public NearbyMultifamilyCityPostalSubmarketFinder(IUseCaseContainer useCaseContainer)
+        {
+            this.repository = useCaseContainer.ResolveUseCaseContainer<IMatchRepository>();
+            this.cityLocator = useCaseContainer.ResolveUseCaseContainer<INearbyCityLocator>();
+            this.postalCodeLocator = useCaseContainer.ResolveUseCaseContainer<INearbyPostalCodeLocator>();
+            this.submarketLocator = useCaseContainer.ResolveUseCaseContainer<INearbySubmarketLocator>();
+            this.typeAheadLogic = useCaseContainer.ResolveUseCaseContainer<IMultifamilyTypeAheadLogic>();            
+        }
+
+        public bool IsCriteriaApplicable(NearbyGeographiesCriteria criteria)
+        {
+            if (criteria == null)
+            {
+                return false;
+            }
+
+            if (criteria.CenterPoint != null)
+            {
+                return true;
+            }
+
+            if (criteria.FilterByText == null)
+            {
+                return false;
+            }
+
+            return !string.IsNullOrWhiteSpace(criteria.FilterByText.LookupText 
+                                              ?? criteria.FilterByText.Submarket 
+                                              ?? criteria.FilterByText.City 
+                                              ?? criteria.FilterByText.PostalCode 
+                                              ?? string.Empty);
+        }
+
+        public async Task<GeographyMatchResultContainer> FindGeographiesAsync(
+            IConfiguration configuration,
+            NearbyGeographiesCriteria criteria)
+        {
+            var matchResultContainer = new GeographyMatchResultContainer();
+            var bestMatch = await this.GetBestMatchIfNecessaryAsync(criteria).Prepare();
+            matchResultContainer.GeographyMatchFromFilterText = bestMatch.ToGeographyMatchResult();
+            var centerPoint = criteria.CenterPoint ?? (bestMatch == null ? null : bestMatch.Location);
+
+            if (centerPoint == null)
+            {
+                return matchResultContainer;
+            }
+
+            var preliminaryResults = await this.ListGeographyMatchResultsAsync(
+                configuration.ReturnCount, 
+                centerPoint, 
+                bestMatch).Prepare();
+
+            var distanceLimit = criteria.GetDistanceLimit(configuration);
+
+            var confirmedMatches = preliminaryResults
+                .Where(match => match.Location != null 
+                    && centerPoint.ToTypeObject().CalculateDistance(match.Location.ToTypeObject()) < distanceLimit);
+
+            foreach (var confirmedMatch in confirmedMatches)
+            {
+                matchResultContainer.Items.Add(confirmedMatch);
+            }
+
+            return matchResultContainer;
+        }
+
+        private static bool ShouldCityAloneBeAttempted(NearbyGeographiesCriteria criteria)
+        {
+            return !string.IsNullOrWhiteSpace(criteria.FilterByText.City);
+        }
+
+        private async Task<GeographyMatchResult[]> ListGeographyMatchResultsAsync(
+                                                    int count, 
+                                                    GeographicCoordinate centerPoint, 
+                                                    MultifamilyTypeAheadItem bestMatch)
+        {
+            Contract.Requires(count > 0);
+
+            var tasks = this.StartFinderTasksAsync(count, centerPoint, bestMatch);
+            await Task<GeographyMatchResult[]>.WhenAll(tasks).Prepare();
+
+            return tasks.SelectMany(task => task.Result).ToArray();
+        }
+
+        private Task<GeographyMatchResult[]>[] StartFinderTasksAsync(
+                                                    int count,
+                                                    GeographicCoordinate centerPoint,
+                                                    MultifamilyTypeAheadItem bestMatch)
+        {
+            return new[]
+            {
+                new CityFinder(count, this.cityLocator, this.repository).FindNearestGeographiesAsync(centerPoint, bestMatch),
+                new PostalCodeFinder(count, this.postalCodeLocator, this.repository).FindNearestGeographiesAsync(centerPoint, bestMatch),
+                new SubmarketFinder(count, this.submarketLocator, this.repository).FindNearestGeographiesAsync(centerPoint, bestMatch)
+            };
+        }
+
+        private async Task<MultifamilyTypeAheadItem> GetBestMatchIfNecessaryAsync(NearbyGeographiesCriteria criteria)
+        {
+            if (criteria.CenterPoint != null)
+            {
+                return null;
+            }
+
+            var bestMatch = await UnauthenticatedProcessorStrategy.FindBestMatchAsync(
+                                                            criteria.FilterByText, 
+                                                            criteria.CenterPoint,
+                                                            this.typeAheadLogic).Prepare();
+
+            if (bestMatch != null)
+            {
+                return bestMatch;
+            }
+
+            if (ShouldCityAloneBeAttempted(criteria))
+            {
+                return await this.FindBestMatchByCityAloneAsync(criteria).Prepare();
+            }
+
+            return null;
+        }
+
+        private async Task<MultifamilyTypeAheadItem> FindBestMatchByCityAloneAsync(NearbyGeographiesCriteria criteria)
+        {
+            criteria.FilterByText.PostalCode = null;
+            criteria.FilterByText.Submarket = null;
+
+            return await UnauthenticatedProcessorStrategy.FindBestMatchAsync(
+                criteria.FilterByText,
+                criteria.CenterPoint,
+                this.typeAheadLogic).Prepare();
+        }
+    }
+}
