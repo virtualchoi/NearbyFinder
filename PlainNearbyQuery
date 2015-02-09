@@ -1,0 +1,22 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
+    using CoStar.Api.EnterpriseSub2.Geography;
+
+    internal class PlainNearbyQuery<T> : INearbyQuery<T> where T : GeographyViewModel
+    {
+        private readonly FinderBase<T> finder;
+
+        public PlainNearbyQuery(FinderBase<T> finder)
+        {
+            this.finder = finder;
+        }
+
+        public async Task<IEnumerable<T>> FindNearbyAsync(GeographicCoordinate center, int maxCount)
+        {
+            return await this.finder.FindNearbyAsync(center, maxCount).Prepare();
+        }
+    }
+}
