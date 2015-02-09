@@ -1,0 +1,20 @@
+namespace Github.NearbyFinder
+{
+    internal static class NearbyQueryFactory
+    {
+        public static INearbyQuery<T> CreateNearbyByQuery<T>(FinderBase<T> finder, MultifamilyTypeAheadItem bestMatch) where T : GeographyViewModel
+        {
+            if (DoesMultifamilyTypeAheadItemMatchType(bestMatch, finder.GeographyType))
+            {
+                return new SameMatchTypeNearbyFinder<T>(finder, bestMatch);
+            }
+
+            return new PlainNearbyQuery<T>(finder);
+        }
+
+        private static bool DoesMultifamilyTypeAheadItemMatchType(MultifamilyTypeAheadItem item, MatchType matchType)
+        {
+            return (item != null) && (item.MatchType == matchType) && item.MatchId.HasValue;
+        }
+    }
+}
