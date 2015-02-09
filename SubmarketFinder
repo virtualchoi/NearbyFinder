@@ -1,0 +1,76 @@
+namespace Github.NearbyFinder
+{
+    using System;
+    using System.Collections.Generic;
+    using System.Diagnostics.Contracts;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    internal class SubmarketFinder : FinderBase<SubmarketWithoutKml>
+    {
+        private readonly INearbySubmarketLocator locator;
+
+        internal SubmarketFinder(
+            int count,
+            INearbySubmarketLocator locator, 
+            IMatchRepository repository)
+            : base(count, repository)
+        {
+            Contract.Requires(count > 0);
+            Contract.Requires(locator != null);
+            Contract.Requires(locator.Strategy != null);
+            Contract.Requires(repository != null);
+
+            this.locator = locator;
+        }
+
+        internal override MatchType GeographyType
+        {
+            get { return MatchType.Submarket; }
+        }
+
+        internal override long GetId(SubmarketWithoutKml entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException("entity");
+            }
+
+            return entity.SubmarketId;
+        }
+
+        internal override async Task<IEnumerable<SubmarketWithoutKml>> FindNearbyAsync(
+            GeographicCoordinate center, 
+            int maxCount)
+        {
+            const int MultiplierToInsureEnoughRecords = 3;
+            return await this.locator.LocateAsync(center, maxCount * MultiplierToInsureEnoughRecords).Prepare();
+        }
+
+        protected override async Task<IEnumerable<MultifamilyTypeAheadItem>> GenerateMultifamilyTypeAheadItemsAsync(IEnumerable<SubmarketWithoutKml> queryResults)
+        {
+            var lookupMatches = await this.Repository.FindAsync(
+                this.GeographyType,
+                queryResults.Select(this.GetId)).Prepare();
+
+            return lookupMatches.Value.Items.Where(IsSubmarketAcceptable)
+                            .Take(this.MaxCount);
+        }
+
+        private static bool IsSubmarketAcceptable(MultifamilyTypeAheadItem item)
+        {
+            return item.MatchType == MatchType.Submarket
+                   && item.Elements.ContainsKey(LookupHelper.CityElementName) && item.Elements.ContainsKey(LookupHelper.SubmarketElementName)
+                   && !item.Elements[LookupHelper.CityElementName].Trim().Equals(item.Elements[LookupHelper.SubmarketElementName].Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
+#if CONTRACTS_FULL
+        [ContractInvariantMethod]
+        [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+        private void EnsureInvariants()
+        {
+            Contract.Invariant(this.locator != null);
+        }
+#endif
+    }
+}
