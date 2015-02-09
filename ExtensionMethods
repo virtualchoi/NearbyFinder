@@ -1,0 +1,24 @@
+namespace Github.NearbyFinder
+{
+    using System.Diagnostics.CodeAnalysis;
+    using System.Diagnostics.Contracts;
+
+    internal static class ExtensionMethods
+    {
+        internal static Length GetDistanceLimit(this NearbyGeographiesCriteria criteria, IConfiguration configuration)
+        {
+            Contract.Requires(configuration != null);
+            Contract.Requires(criteria != null);
+
+            if (criteria.Radius != null)
+            {
+                if (criteria.Radius.IsValid())
+                {
+                    return criteria.Radius.ToLength();
+                }
+            }
+
+            return new Meter(configuration.DistanceLimit);
+        }
+    }
+}
