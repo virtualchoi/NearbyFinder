@@ -1,0 +1,54 @@
+namespace Github.NearbyFinder
+{
+    using System.Collections.Generic;
+    using System.Diagnostics.Contracts;
+    using System.Linq;
+    using System.Threading.Tasks;
+
+    [ContractClass(typeof(ContractForFinderBase<>))]
+    [ContractVerification(true)]
+    internal abstract class FinderBase<T>
+        where T : GeographyViewModel
+    {
+        protected FinderBase(int count, IMatchRepository repository)
+        {
+            Contract.Requires(count > 0);
+            Contract.Requires(repository != null);
+
+            this.MaxCount = count;
+            this.Repository = repository;
+        }
+
+        internal abstract MatchType GeographyType { get; }
+
+        protected int MaxCount { get; private set; }
+
+        protected IMatchRepository Repository { get; private set; }
+
+        internal async Task<GeographyMatchResult[]> FindNearestGeographiesAsync(
+            GeographicCoordinate coordinate,
+            MultifamilyTypeAheadItem bestMatch)
+        {
+            var nearbyQuery = NearbyQueryFactory.CreateNearbyByQuery(this, bestMatch);
+            var matchResults = await nearbyQuery.FindNearbyAsync(coordinate, this.MaxCount).Prepare();
+            var lookupMatches = await this.GenerateMultifamilyTypeAheadItemsAsync(matchResults).Prepare();
+            return lookupMatches.Select(lookupMatch => lookupMatch.ToGeographyMatchResult()).ToArray();
+        }
+
+        internal abstract Task<IEnumerable<T>> FindNearbyAsync(GeographicCoordinate center, int maxCount);
+
+        internal abstract long GetId(T entity);
+
+        protected abstract Task<IEnumerable<MultifamilyTypeAheadItem>> GenerateMultifamilyTypeAheadItemsAsync(IEnumerable<T> queryResults);
+
+#if CONTRACTS_FULL
+        [ContractInvariantMethod]
+        [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]
+        private void EnsureInvariants()
+        {
+            Contract.Invariant(this.count > 0);
+            Contract.Invariant(this.repository != null);
+        }
+#endif
+    }
+}
