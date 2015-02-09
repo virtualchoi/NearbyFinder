@@ -1,0 +1,37 @@
+namespace Github.NearbyFinder
+{
+  using System;
+
+    // Summary:
+    //     Criteria to search for geographies by lookup text.  Use this when geography
+    //     ids are not known.
+    public class GeographyTextFilter
+    {
+        public GeographyTextFilter();
+
+        // Summary:
+        //     Gets or sets a city text to search for.
+        public string City { get; set; }
+        //
+        // Summary:
+        //     Gets or sets a lookup text to find a property either by building name or
+        //     street address.
+        public string LookupText { get; set; }
+        //
+        // Summary:
+        //     Gets or sets a postal code to search for.
+        public string PostalCode { get; set; }
+        //
+        // Summary:
+        //     Gets or sets a subdivision code to search for.
+        public string SubdivisionCode { get; set; }
+        //
+        // Summary:
+        //     Gets or sets a submarket name to search for.
+        public string Submarket { get; set; }
+        //
+        // Summary:
+        //     Gets or sets a transit station name to search for.
+        public string TransitStation { get; set; }
+    }
+}
